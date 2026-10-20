@@ -61,9 +61,17 @@ namespace OpenNutriView
                 }
 
                 // Containers
-                foreach (var storageComponent in WorldObjectUtil.AllObjsWithComponent<StorageComponent>().Where(i => i.Parent.Auth.Owners != null && i.Parent.Auth.Owners.ContainsUser(user)))
-                    foreach (var itemStack in storageComponent.Inventory.Stacks.Where(item => item.Item is FoodItem))
+                foreach (var storageComponent in WorldObjectUtil.AllObjsWithComponent<StorageComponent>())
+                {
+                    if (storageComponent == null || storageComponent.Parent == null || storageComponent.Parent.Auth?.Owners == null)
+                        continue;
+                    if (!storageComponent.Parent.Auth.Owners.ContainsUser(user))
+                        continue;
+                    if (storageComponent.Inventory == null)
+                        continue;
+                    foreach (var itemStack in storageComponent.Inventory.Stacks.Where(item => item?.Item is FoodItem))
                         addFood(itemStack, storageComponent.Parent);
+                }
 
                 // Player inventory
                 foreach (var stack in user.Inventory.Stacks.Where(s => s.Item is FoodItem))
