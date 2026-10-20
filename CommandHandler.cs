@@ -24,7 +24,8 @@ namespace OpenNutriView
         {
             ONVUserConfig config = OpenNutriViewData.Obj.GetConfig(user);
 
-            ViewEditorUtils.PopupUserEditValue(user, typeof(ONVUserConfigUI), Localizer.DoStr("Trade Assistant Configuration"), config.ToUI(), null, OnSubmit);
+            // 2.2.1: use the mod's own name in the config popup (was a copy of the Trade Assistant title).
+            ViewEditorUtils.PopupUserEditValue(user, typeof(ONVUserConfigUI), Localizer.DoStr("OpenNutriView Configuration"), config.ToUI(), null, OnSubmit);
             void OnSubmit(object entry)
             {
                 if (entry is ONVUserConfigUI uiConfig)

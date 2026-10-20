@@ -2,6 +2,7 @@
 using Eco.Core.Plugins;
 using Eco.Shared.Localization;
 using Eco.Shared.Utils;
+using System.IO;
 namespace OpenNutriView
 {
     public class OpenNutriViewPlugin :
@@ -21,8 +22,17 @@ namespace OpenNutriView
             }
             catch
             {
+                // 2.2.6: back up corrupt storage files (rename to .corrupt.<timestamp>) instead of
+                // deleting them, so a single bad save cannot wipe every player's configuration.
                 foreach (string file in StorageManager.GetFiles("OpenNutriView"))
-                    StorageManager.Delete(file);
+                {
+                    try
+                    {
+                        if (File.Exists(file))
+                            File.Move(file, file + ".corrupt." + System.DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
+                    }
+                    catch { }
+                }
                 data = StorageManager.LoadOrCreate<OpenNutriViewData>("OpenNutriView", null);
             }
         }

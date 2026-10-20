@@ -1,0 +1,42 @@
+# English template for OpenNutriView Rework.
+# 2.3.1: first localization template - every user-facing string from the mod is listed here.
+# Translations are loaded by Eco from the mod's Locales folder at runtime.
+
+msgid "OpenNutriView Configuration"
+msgstr "OpenNutriView Configuration"
+
+msgid "Current stomach: {0} kcal, balance x{1}, {2} nutrients per 1000 kcal"
+msgstr "Current stomach: {0} kcal, balance x{1}, {2} nutrients per 1000 kcal"
+
+msgid "These are the best {0} foods available to you (Good for a balanced diet):"
+msgstr "These are the best {0} foods available to you (Good for a balanced diet):"
+
+msgid "These are the most nutrient dense food available to you (Good for when your diet balance is good and previous suggestions are bad):"
+msgstr "These are the most nutrient dense food available to you (Good for when your diet balance is good and previous suggestions are bad):"
+
+msgid "{0}{1} will provide you {2} XP and can be found here: {3}{4}"
+msgstr "{0}{1} will provide you {2} XP and can be found here: {3}{4}"
+
+msgid "{0}{1} has {2} nutrition and will provide you {3} XP and can be found here: {4}"
+msgstr "{0}{1} has {2} nutrition and will provide you {3} XP and can be found here: {4}"
+
+msgid "* Assumed delicious tasting"
+msgstr "* Assumed delicious tasting"
+
+msgid "Nutrition times tastiness {0}{1}"
+msgstr "Nutrition times tastiness {0}{1}"
+
+msgid "This food will provide you {0}{1} XP"
+msgstr "This food will provide you {0}{1} XP"
+
+msgid "Your inventory"
+msgstr "Your inventory"
+
+msgid "Shows commands available from the OpenNutriView mod"
+msgstr "Shows commands available from the OpenNutriView mod"
+
+msgid "Opens up a window to change your configurations"
+msgstr "Opens up a window to change your configurations"
+
+msgid "Mods"
+msgstr "Mods"

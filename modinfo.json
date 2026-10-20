@@ -1,0 +1,9 @@
+{
+  "name": "OpenNutriView Rework",
+  "version": "0.1.8.0",
+  "ecoVersion": "0.14.2.1",
+  "author": "JuanBerta (fork)",
+  "website": "https://github.com/JuanBerta/OpenNutriView",
+  "description": "Enhances stomach and food item tooltips to help you eat the best food for a balanced and nutritious stomach content. / 强化胃部与食物提示，帮助你摄取营养均衡的最佳食物。",
+  "displayName": "OpenNutriView Rework"
+}

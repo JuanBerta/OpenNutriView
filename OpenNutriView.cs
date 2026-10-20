@@ -28,15 +28,24 @@ namespace OpenNutriView
     {
         public static class NextFood
         {
-            static Dictionary<Type, HashSet<WorldObject>> GetAccessableFood(User user, HashSet<int> ignoredCurrencyIds, float shopMaxCostPer1000Calories = float.PositiveInfinity, float shopMaxDistance = float.PositiveInfinity)
+            static (Dictionary<Type, HashSet<WorldObject>> Foods, Dictionary<Type, float> CostPer1000Calories, Dictionary<Type, float> Distance) GetAccessableFood(User user, HashSet<int> ignoredCurrencyIds, float shopMaxCostPer1000Calories = float.PositiveInfinity, float shopMaxDistance = float.PositiveInfinity, HashSet<int>? ignoredFoodTypeIds = null)
             {
                 var foods = new Dictionary<Type, HashSet<WorldObject>>();
+                // 2.1.1: parallel lookups so the recommendation lists can sort by cost / distance.
+                var costPer1000Calories = new Dictionary<Type, float>();
+                var distance = new Dictionary<Type, float>();
 
-                void addFood(ItemStack stack, WorldObject obj)
+                void addFood(ItemStack stack, WorldObject? obj, float costPer1000 = 0f, float dist = 0f)
                 {
                     if (stack.Item is not FoodItem food || food.Calories <= 0)
                         return;
-                    foods.GetOrAdd(food.Type).Add(obj);
+                    if (ignoredFoodTypeIds != null && ignoredFoodTypeIds.Contains(food.TypeID))
+                        return; // 2.1.2 food blacklist
+                    foods.GetOrAdd(food.Type).Add(obj!);
+                    if (costPer1000 > 0f && (!costPer1000Calories.TryGetValue(food.Type, out var curCost) || costPer1000 < curCost))
+                        costPer1000Calories[food.Type] = costPer1000;
+                    if (!distance.TryGetValue(food.Type, out var curDist) || dist < curDist)
+                        distance[food.Type] = dist;
                 }
 
                 // Stores
@@ -50,6 +59,7 @@ namespace OpenNutriView
                         && !ignoredCurrencyIds.Contains(store.Currency.Id)
                         && World.WrappedDistance(user.Player.WorldPosXZ(), store.Parent.WorldPosXZ()) <= shopMaxDistance))
                 {
+                    var storeDistance = World.WrappedDistance(user.Player.WorldPosXZ(), store.Parent.WorldPosXZ());
                     foreach (var tradeOffer in store.StoreData.SellOffers
                         .Where(o => o != null
                             && o.Stack != null
@@ -57,27 +67,31 @@ namespace OpenNutriView
                             && foodItem.Calories > 0
                             && o.Stack.Quantity > 0
                             && o.Price / foodItem.Calories * 1000 < shopMaxCostPer1000Calories))
-                        addFood(tradeOffer.Stack, store.Parent);
+                        addFood(tradeOffer.Stack, store.Parent, tradeOffer.Price / ((FoodItem)tradeOffer.Stack.Item).Calories * 1000, storeDistance);
                 }
 
-                // Containers
+                // Containers - 2.2.2: only count containers within the configured distance so a
+                // private chest on the other side of the world is not advertised as "accessible".
                 foreach (var storageComponent in WorldObjectUtil.AllObjsWithComponent<StorageComponent>())
                 {
                     if (storageComponent == null || storageComponent.Parent == null || storageComponent.Parent.Auth?.Owners == null)
                         continue;
                     if (!storageComponent.Parent.Auth.Owners.ContainsUser(user))
                         continue;
+                    if (World.WrappedDistance(user.Player.WorldPosXZ(), storageComponent.Parent.WorldPosXZ()) > shopMaxDistance)
+                        continue;
                     if (storageComponent.Inventory == null)
                         continue;
+                    var containerDistance = World.WrappedDistance(user.Player.WorldPosXZ(), storageComponent.Parent.WorldPosXZ());
                     foreach (var itemStack in storageComponent.Inventory.Stacks.Where(item => item?.Item is FoodItem))
-                        addFood(itemStack, storageComponent.Parent);
+                        addFood(itemStack, storageComponent.Parent, 0f, containerDistance);
                 }
 
                 // Player inventory
                 foreach (var stack in user.Inventory.Stacks.Where(s => s.Item is FoodItem))
                     addFood(stack, null);
 
-                return foods;
+                return (foods, costPer1000Calories, distance);
             }
 
             private static (Nutrients stomachNutrients, float stomachCalories, Dictionary<Type, float> foodCalories) LoadCurrentStomach(Stomach stomach)
@@ -99,7 +113,7 @@ namespace OpenNutriView
                 var config = OpenNutriViewData.Obj.GetConfig(stomach.Owner);
                 var (stomachNutrients, stomachCalories, foodCalories) = LoadCurrentStomach(stomach);
 
-                var foods = GetAccessableFood(stomach.Owner, config.IgnoredCurrencies.ToHashSet(), config.MaxCostPer1000Calories, config.MaxShopDistance);
+                var (foods, foodCosts, _) = GetAccessableFood(stomach.Owner, config.IgnoredCurrencies.ToHashSet(), config.MaxCostPer1000Calories, config.MaxShopDistance, config.IgnoredFoodTypeIds.ToHashSet());
                 var foodGains = new Dictionary<Type, (float gain, bool assumedTaste, float nutrition)>();
                 foreach (var food in foods.Keys)
                     foodGains.Add(food, CalculateGain(TypeToFood(food), stomach, stomachNutrients, stomachCalories, foodCalories));
@@ -110,14 +124,21 @@ namespace OpenNutriView
                 sb.AppendLine(Localizer.Do(FormattableStringFactory.Create("Current stomach: {0} kcal, balance x{1}, {2} nutrients per 1000 kcal", Text.Info(Text.Num(stomachCalories)), Text.Info(balancedMult.ToString("0.00")), Text.Info(balancedNutrients.NutrientTotal().ToString("0.0")))));
                 sb.AppendLine(new LocString(Text.ColorUnity(Color.Yellow.UInt, TextLoc.SizeLoc(0.8f, FormattableStringFactory.Create($"These are the best {config.RecommendationCount} foods available to you (Good for a balanced diet):")).Italic())));
                 var addAssumedFooter = false;
-                foreach (var (key, worldObjs) in foods.OrderByDescending(f => foodGains[f.Key].gain).Where(f => foodGains[f.Key].nutrition >= config.MinimumNutrients).Take(config.RecommendationCount))
+                // 2.1.1: optional sort - cheapest per 1000 kcal first (then best XP gain) instead of raw gain.
+                var orderedBest = config.SortByCheapestPer1000Calories
+                    ? foods.OrderBy(f => foodCosts.GetValueOrDefault(f.Key, float.PositiveInfinity)).ThenByDescending(f => foodGains[f.Key].gain)
+                    : foods.OrderByDescending(f => foodGains[f.Key].gain);
+                foreach (var (key, worldObjs) in orderedBest.Where(f => foodGains[f.Key].nutrition >= config.MinimumNutrients).Take(config.RecommendationCount))
                 {
                     FoodItem food = TypeToFood(key);
                     var (gain, assumedTaste, _) = foodGains[key];
                     addAssumedFooter |= assumedTaste;
                     var locString = Localizer.DoStr((gain >= 0 ? "+" : "") + Math.Round(gain, 2).ToString()).Style(gain >= 0.0 ? Text.Styles.Positive : Text.Styles.Negative);
                     var str2 = string.Join(", ", worldObjs.Select(o => o == null ? new LocString("Your inventory") : o.UILink()));
-                    sb.AppendLine(Localizer.Do(FormattableStringFactory.Create("{0}{1} will provide you {2} XP and can be found here: {3}", food.UILink(), assumedTaste ? "*" : "", locString, str2)));
+                    var costNote = foodCosts.TryGetValue(key, out var cost) && float.IsFinite(cost) && cost > 0
+                        ? Localizer.DoStr($" ({cost.ToString("0.0")}/kcal)")
+                        : new LocString();
+                    sb.AppendLine(Localizer.Do(FormattableStringFactory.Create("{0}{1} will provide you {2} XP and can be found here: {3}{4}", food.UILink(), assumedTaste ? "*" : "", locString, str2, costNote)));
                 }
                 if (addAssumedFooter)
                     sb.AppendLine(new LocString("* Assumed delicious tasting"));

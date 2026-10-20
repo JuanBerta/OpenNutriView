@@ -12,13 +12,14 @@ namespace OpenNutriView
         [Serialized]
         public ThreadSafeDictionary<int, ONVUserConfig> UserConfiguration = new();
 
-        public IPersistent StorageHandle { get; set; }
+        public IPersistent StorageHandle { get; set; } = null!;
 
         public ONVUserConfig GetConfig(User user)
         {
+            // 2.2.5: GetOrAdd semantics without the redundant TryRemove (the key was just
+            // proven missing, so removing it again can never succeed and only wastes a lock).
             if (!UserConfiguration.TryGetValue(user.Id, out ONVUserConfig config))
             {
-                UserConfiguration.TryRemove(user.Id);
                 config = new ONVUserConfig();
                 UserConfiguration.Add(user.Id, config);
             }

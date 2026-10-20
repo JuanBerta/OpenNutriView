@@ -23,7 +23,9 @@ namespace OpenNutriView
         [Serialized] public int RecommendationCount { get; set; } = 3;
         [Serialized] public float MaxCostPer1000Calories { get; set; } = float.PositiveInfinity;
         [Serialized] public float MaxShopDistance { get; set; } = float.PositiveInfinity;
+        [Serialized] public bool SortByCheapestPer1000Calories { get; set; } = false;   // 2.1.1
         [Serialized] public ThreadSafeList<int> IgnoredCurrencies = new();
+        [Serialized] public ThreadSafeList<int> IgnoredFoodTypeIds = new();            // 2.1.2 food blacklist
 
         public ONVUserConfigUI ToUI()
         {
@@ -33,22 +35,33 @@ namespace OpenNutriView
                 MaxShopDistance = MaxShopDistance,
                 MinimumNutrients = MinimumNutrients,
                 RecommendationCount = RecommendationCount,
+                SortByCheapestPer1000Calories = SortByCheapestPer1000Calories,
             };
             var idToCurrency = new Dictionary<int, Currency>();
             CurrencyManager.Currencies.ForEach(c => idToCurrency.Add(c.Id, c));
-            IgnoredCurrencies.Select(id => idToCurrency.GetOrDefault(id)).Where(p => p != null).ForEach(ui.IgnoredCurrencies.Add);
+            IgnoredCurrencies.Select(id => idToCurrency.GetOrDefault(id)).Where(c => c != null).ForEach(c => ui.IgnoredCurrencies.Add(c!));
+            ui.IgnoredFoods = new ControllerList<Item>(ui, nameof(ui.IgnoredFoods));
+            IgnoredFoodTypeIds.Select(id => Item.Get(id)).Where(i => i != null).ForEach(i => ui.IgnoredFoods.Add(i!));
             return ui;
         }
 
         public void UpdateFromUI(ONVUserConfigUI config)
         {
-            MaxCostPer1000Calories = config.MaxCostPerThousandCalories;
-            MinimumNutrients = config.MinimumNutrients;
+            // 2.2.3: sanitize user-entered numbers - NaN / negative values would silently
+            // disable every filter (or filter everything out); treat them as "no limit".
+            MaxCostPer1000Calories = SanitizePositive(config.MaxCostPerThousandCalories);
+            MinimumNutrients = SanitizePositive(config.MinimumNutrients);
             RecommendationCount = Math.Clamp(config.RecommendationCount, 1, 10);
-            MaxShopDistance = config.MaxShopDistance;
+            MaxShopDistance = SanitizePositive(config.MaxShopDistance);
+            SortByCheapestPer1000Calories = config.SortByCheapestPer1000Calories;
             IgnoredCurrencies.Clear();
             IgnoredCurrencies.AddRange(config.IgnoredCurrencies.Select(c => c.Id));
+            IgnoredFoodTypeIds.Clear();
+            IgnoredFoodTypeIds.AddRange(config.IgnoredFoods.Select(i => i.TypeID));
         }
+
+        private static float SanitizePositive(float value)
+            => float.IsNaN(value) || value < 0 ? float.PositiveInfinity : value;
     }
 
     public class ONVUserConfigUI : IController, INotifyPropertyChanged, Eco.Core.PropertyHandling.INotifyPropertyChangedInvoker, IHasClientControlledContainers
@@ -62,9 +75,16 @@ namespace OpenNutriView
         [Eco] public float MaxShopDistance { get; set; } = float.PositiveInfinity;
         [Eco, AllowEmpty] public ControllerList<Currency> IgnoredCurrencies { get; set; }
 
+        // 2.1.1: toggle whether the first recommendation list prefers the cheapest food per 1000 kcal.
+        [Eco] public bool SortByCheapestPer1000Calories { get; set; } = false;
+
+        // 2.1.2: food blacklist - foods selected here are excluded from tooltip recommendations.
+        [Eco, AllowEmpty] public ControllerList<Item> IgnoredFoods { get; set; }
+
         public ONVUserConfigUI()
         {
             IgnoredCurrencies = new ControllerList<Currency>(this, nameof(IgnoredCurrencies));
+            IgnoredFoods = new ControllerList<Item>(this, nameof(IgnoredFoods));
         }
 
 
